@@ -69,24 +69,17 @@ struct LicenseServiceImpl {
 }
 
 impl LicenseServiceImpl {
-    async fn make_community_license(&self) -> Result<LicenseInfo> {
+    async fn make_default_license(&self) -> Result<LicenseInfo> {
         let seats_used = self.db.count_active_users().await?;
-        let status = if seats_used > LicenseInfo::seat_limits_for_community_license() {
-            LicenseStatus::SeatsExceeded
-        } else {
-            LicenseStatus::Ok
-        };
-
         Ok(LicenseInfo {
-            r#type: LicenseType::Community,
-            status,
-            seats: LicenseInfo::seat_limits_for_community_license() as i32,
+            r#type: LicenseType::Enterprise,
+            status: LicenseStatus::Ok,
+            seats: 100,
             seats_used: seats_used as i32,
             issued_at: None,
             expires_at: None,
-            features: None,
-        }
-        .guard_seat_limit())
+            features: Some(vec![LicenseFeature::CustomLogo]),
+        })
     }
 
     async fn make_demo_license(&self) -> Result<LicenseInfo> {
@@ -140,7 +133,7 @@ impl LicenseService for LicenseServiceImpl {
         }
 
         let Some(license) = self.db.read_enterprise_license().await? else {
-            return self.make_community_license().await;
+            return self.make_default_license().await;
         };
         let license =
             validate_license(&license).map_err(|e| anyhow!("License is corrupt: {e:?}"))?;
@@ -224,9 +217,6 @@ mod tests {
         assert!(service.update(EXPIRED_TOKEN.into()).await.is_err());
 
         service.reset().await.unwrap();
-        assert_eq!(
-            service.read().await.unwrap().seats,
-            LicenseInfo::seat_limits_for_community_license() as i32
-        );
+        assert_eq!(service.read().await.unwrap().seats, 100);
     }
 }
